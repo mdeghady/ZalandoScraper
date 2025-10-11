@@ -196,7 +196,7 @@ Root endpoint with service information.
 ## 🏗 Project Structure
 
 ```
-zalando-scraper/
+zalandoScraper/
 ├── app/
 │   ├── main.py                 # FastAPI application entry point
 │   ├── api/
