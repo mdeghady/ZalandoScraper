@@ -47,10 +47,10 @@ pip install -r requirements.txt
 
 4. **Run the application**
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
-The API will be available at `http://localhost:8000`
+The API will be available at `http://localhost:8001`
 
 ## 🐳 Docker Support
 
@@ -59,14 +59,14 @@ The API will be available at `http://localhost:8000`
 docker build -t zalando-scraper .
 
 # Run the container
-docker run -p 8000:8000 zalando-scraper
+docker run -p 8001:8001 zalando-scraper
 ```
 
 ## 📚 API Documentation
 
 Once running, access the interactive API documentation:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: http://localhost:8001/docs
+- **ReDoc**: http://localhost:8001/redoc
 
 ## 🔌 API Endpoints
 
