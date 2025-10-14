@@ -110,13 +110,27 @@ class ZalandoAPIScraper:
         return self.fetch_product_by_id(product_code)
 
     def fetch_product_by_id(self, product_id: str) -> Dict:
+        # payload = {
+        #     "id": "4d1d108a1b774122d02d46a47ffc05819b083570192b52c0c609813cb59f26fe",
+        #     "variables": {
+        #         "id": f"ern:product::{product_id}",
+        #         "version": 2,
+        #         "moduleInput": {"module": "PRODUCT_CARD_WITH_HOVER"},
+        #         "displayContext": {"module": "PRODUCT_CARD_WITH_HOVER"},
+        #     },
+        # }
+
         payload = {
-            "id": "4d1d108a1b774122d02d46a47ffc05819b083570192b52c0c609813cb59f26fe",
+            "id": "8020c8d0d6d82c0cee1ec4c464423f85b5dfb10c6b19ddcd5149abb488b09df1",
             "variables": {
                 "id": f"ern:product::{product_id}",
-                "version": 1,
+                "version": 2,
                 "moduleInput": {"module": "PRODUCT_CARD_WITH_HOVER"},
                 "displayContext": {"module": "PRODUCT_CARD_WITH_HOVER"},
+                "skipHoverData" : False,
+                "isSustainabilityProductScoreEnabled" : True,
+                "isRatingEnabled": True,
+                "shouldLoadGallery": True
             },
         }
         return self._post_graphql(payload)
@@ -128,3 +142,14 @@ class ZalandoAPIScraper:
         }
         return self._post_graphql(payload)
 
+# Example Usage:
+if __name__ == "__main__":
+    scraper = ZalandoAPIScraper()
+    try:
+        product_data = scraper.fetch_product_by_url("https://www.zalando.it/k-way-le-vrai-claude-unisex-giacca-leggera-blue-depht-kw121003p-k11.html")
+        # Save data in JSON format
+        with open("product_data.json", "w") as f:
+            json.dump(product_data, f, indent=2)
+        print(json.dumps(product_data, indent=2))
+    except Exception as e:
+        print(f"Error: {e}")

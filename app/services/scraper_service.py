@@ -136,30 +136,32 @@ class ZalandoScraperService:
         if product_data and 'data' in product_data:
             # product_node = product_data['data']['product']['family']['products']['edges'][0]['node']
             # Choose the right variant according to the sku
-            product_color_variants = product_data['data']['product']['family']['products']['edges']
-            for product_variant in product_color_variants:
-                if product_variant['node']['sku'] == parsed_sku.sku:
-                    product_variant = product_variant['node']
-                    parsed_product = ProductData(
-                        id=product_variant['id'],
-                        name=product_variant['name'],
-                        sku=product_variant['sku'],
-                        model_number=sku_node.get('modelNumber'),
-                        gtin=gtin,
-                        brand=product_variant['brand']['name'],
-                        display_price=product_variant['displayPrice'],
-                        productFlags = product_variant.get('productFlags', []),
-                        packshot_image=product_variant.get('packshotImage', {}).get('uri'),
-                        silhouette=product_variant.get('silhouette'),
-                        navigation_target_group=product_variant.get('navigationTargetGroup'),
-                        simples=sku_node.get('simples', [])
-                    )
-                    # Calculating & Adding Tracking Discount Percentage with 2 decimals
-                    current_price = parsed_product.display_price.get('trackingCurrentAmount')
-                    discount_amount = parsed_product.display_price.get('trackingDiscountAmount')
+            product_node = product_data.get('data',{}).get('product',{})  #['family']['products']['edges']
+            if product_node :
+                parsed_product = ProductData(
+                    id=product_node['id'],
+                    name=product_node['name'],
+                    sku=product_node['sku'],
+                    model_number=sku_node.get('modelNumber'),
+                    gtin=gtin,
+                    brand=product_node['brand']['name'],
+                    display_price=product_node['displayPrice'],
+                    productFlags = product_node.get('productFlags', []),
+                    packshot_image=product_node.get('packshotImage', {}).get('uri'),
+                    silhouette=product_node.get('silhouette'),
+                    navigation_target_group=product_node.get('navigationTargetGroup'),
+                    simples=sku_node.get('simples', [])
+                )
+                # Calculating & Adding Tracking Discount Percentage with 2 decimals
+                current_price = parsed_product.display_price.get('trackingCurrentAmount')
+                discount_amount = parsed_product.display_price.get('trackingDiscountAmount')
+
+                if current_price is not None and discount_amount is not None:
                     parsed_product.display_price['trackingDiscountPercentage'] = \
                         round(discount_amount / (current_price + discount_amount) , 2) if current_price > 0 else 0
-                    break
+                else:
+                    parsed_product.display_price['trackingDiscountPercentage'] = 0.0
+
 
             # Some of the prices are multiplied by 100
             for price_key in parsed_product.display_price:
