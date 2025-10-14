@@ -104,7 +104,7 @@ class Crawl4AIScraper:
             logger.error(f"Error transforming to modern format: {e}")
             return {"AvailableSizes": [], "ModernSizes": {}, "ProductHighlight": None}
 
-    def _convert_modern_to_legacy_sizes(self, modern_sizes: Dict[str, Dict]) -> List[Dict]:  # NEW
+    def _convert_modern_to_legacy_sizes(self, modern_sizes: Dict[str, Dict]) -> List[Dict]:
         """Convert modern size format to legacy format for backward compatibility."""
         legacy_sizes = []
         for sku, size_info in modern_sizes.items():

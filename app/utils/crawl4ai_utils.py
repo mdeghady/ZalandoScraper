@@ -374,6 +374,9 @@ class ZalandoCrawl4AIScraper:
 
         # Add prices to modern sizes
         for sku_id, size_info in enriched_sizes.items():
+            if size_info['availability'] == "OutOfStock":
+                size_info["price"] = 0
+                continue
             if sku_id in sku_price_lookup:
                 size_info["price"] = sku_price_lookup[sku_id]
             else:
