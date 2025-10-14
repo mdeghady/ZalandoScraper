@@ -1,75 +1,23 @@
 import json
 import re
+import logging
 from typing import List, Dict, Optional
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
-from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
-from app.models.schemas import SizeInfo, AvailabilityStatus
 
+from app.models.schemas import SizeInfo, AvailabilityStatus, ModernSizeInfo  # NEW
+from app.utils.crawl4ai_utils import ZalandoCrawl4AIScraper
 
-class FallbackJsonCssExtractionStrategy(JsonCssExtractionStrategy):
-    """Custom extraction strategy with fallback values"""
-
-    def _extract_single_field(self, element, field):
-        if "selector" in field:
-            if isinstance(field["selector"], list) and len(field["selector"]) > 0:
-                for field_selector in field["selector"]:
-                    selected = self._get_elements(element, field_selector)
-                    if selected:
-                        break
-            else:
-                selected = self._get_elements(element, field["selector"])
-            if not selected:
-                return field.get("default")
-            selected = selected[0]
-        else:
-            selected = element
-
-        value = None
-        if field["type"] == "text":
-            value = self._get_element_text(selected)
-        elif field["type"] == "attribute":
-            value = self._get_element_attribute(selected, field["attribute"])
-        elif field["type"] == "html":
-            value = self._get_element_html(selected)
-        elif field["type"] == "regex":
-            text = self._get_element_text(selected)
-            match = re.search(field["pattern"], text)
-            value = match.group(1) if match else None
-
-        if "transform" in field:
-            value = self._apply_transform(value, field["transform"])
-
-        return value if value is not None else field.get("default")
+logger = logging.getLogger(__name__)
 
 
 class Crawl4AIScraper:
-    """Wrapper around the existing scraper.py functionality"""
+    """Wrapper around the refactored Crawl4AI functionality."""
 
     def __init__(self):
-        self.schema = {
-            "name": "ProductPage",
-            "baseSelector": "body",
-            "fields": [
-                {
-                    "name": "AvailableSizes",
-                    "selector": "div.MU8FaS._0xLoFW._8sTSoF.parent._78xIQ- div",
-                    "type": "nested_list",
-                    "fields": [
-                        {"name": "Size", "selector": "label span div span", "type": "text"},
-                        {"name": "Price", "selector": "div label span div div p span", "type": "text"},
-                        {"name": "Availability", "selector": "div label div.nXkCf3 span", "type": "text"}
-                    ]
-                },
-                {
-                    "name": "ProductHighlight",
-                    "selector": "div._ZDS_REF_SCOPE_.tyCFc1._4VHUP_._0xLoFW.P3OKTW.EJ4MLB._7ckuOK.Ij3QKg.abTEo1.hD5J5m > div > div > span",
-                    "type": "text"
-                }
-            ]
-        }
+        self.scraper = ZalandoCrawl4AIScraper()
 
     def _normalize_size_data(self, raw_sizes: List[Dict]) -> List[SizeInfo]:
-        """Clean and normalize size data from crawler"""
+        """Clean and normalize size data from crawler."""
         normalized_sizes = []
         seen_sizes = set()
 
@@ -118,35 +66,52 @@ class Crawl4AIScraper:
         return normalized_sizes
 
     async def scrape_product_page(self, url: str) -> Optional[Dict]:
-        """Scrape product page using Crawl4AI"""
+        """Scrape product page using the refactored Crawl4AI scraper."""
         try:
-            js_commands = [
-                "document.querySelector('#picker-trigger')?.click()"
-            ]
+            # Use the refactored scraper instead of the old implementation
+            result = await self.scraper.scrape_product_page(url)
 
-            async with AsyncWebCrawler() as crawler:
-                result = await crawler.arun(
-                    url=url,
-                    config=CrawlerRunConfig(
-                        cache_mode=CacheMode.BYPASS,
-                        extraction_strategy=FallbackJsonCssExtractionStrategy(self.schema),
-                        js_code=js_commands,
-                        scan_full_page=True,
-                        magic=True,
-                        wait_for="css:body"
-                    )
-                )
+            if result and result["success"]:
+                # Transform the result to match the expected format with modern sizes
+                transformed_data = self._transform_to_modern_format(result)  # UPDATED
+                return transformed_data
 
-            if result.extracted_content:
-                data = json.loads(result.extracted_content)
-                if data and len(data) > 0:
-                    return data[0]
-            print("extracted_content data")
-            print(result.extracted_content)
-
+            logger.warning("Scraping failed or returned no data")
             return None
 
         except Exception as e:
-            print(f"Crawler error: {e}")
+            logger.error(f"Crawler error: {e}")
             return None
 
+    def _transform_to_modern_format(self, result: Dict) -> Dict:  # NEW METHOD
+        """Transform to modern format with SKU-keyed size dictionary."""
+        try:
+            raw_data = result.get("raw_extracted_data", {})
+            structured_data = result.get("structured_data", {})
+
+            # Get modern sizes directly from the refactored scraper
+            modern_sizes = structured_data.get("modern_sizes", {})
+
+            # Get product highlight from raw data
+            product_highlight = structured_data.get("ProductHighlight", None)
+
+            return {
+                "ModernSizes": modern_sizes,  # NEW: Include modern sizes
+                "ProductHighlight": product_highlight
+            }
+
+        except Exception as e:
+            logger.error(f"Error transforming to modern format: {e}")
+            return {"AvailableSizes": [], "ModernSizes": {}, "ProductHighlight": None}
+
+    def _convert_modern_to_legacy_sizes(self, modern_sizes: Dict[str, Dict]) -> List[Dict]:  # NEW
+        """Convert modern size format to legacy format for backward compatibility."""
+        legacy_sizes = []
+        for sku, size_info in modern_sizes.items():
+            legacy_sizes.append({
+                "Size": size_info.get("size_label", ""),
+                "Availability": size_info.get("notes", ""),
+                "Price": None,
+                "SKU": sku
+            })
+        return legacy_sizes
