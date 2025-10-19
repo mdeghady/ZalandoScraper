@@ -141,15 +141,45 @@ class ZalandoAPIScraper:
             "variables": {"id": f"ern:product::{product_id}"},
         }
         return self._post_graphql(payload)
+    # ------------------- GET THE HTML PAGE OF THE PRODUCT -------------------
+    def fetch_product_page_html(self, url: str , retry=3) -> str:
+        """Fetch the raw HTML of a product page."""
+        if not ZalandoURLParser.is_valid_zalando_url(url):
+            raise ValueError(f"Invalid Zalando product URL: {url}")
 
-# Example Usage:
-if __name__ == "__main__":
-    scraper = ZalandoAPIScraper()
-    try:
-        product_data = scraper.fetch_product_by_url("https://www.zalando.it/k-way-le-vrai-claude-unisex-giacca-leggera-blue-depht-kw121003p-k11.html")
-        # Save data in JSON format
-        with open("product_data.json", "w") as f:
-            json.dump(product_data, f, indent=2)
-        print(json.dumps(product_data, indent=2))
-    except Exception as e:
-        print(f"Error: {e}")
+        domain, _ = ZalandoURLParser.extract_domain_info(url)
+        self.base_domain = domain  # 🔁 dynamically update client domain
+
+        headers = {
+            'authority': 'www.zalando.it',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/>',
+            'accept-language': 'en-US,en;q=0.9',
+            'cache-control': 'max-age=0',
+            'sec-ch-ua': '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";>',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"',
+            'sec-fetch-dest': 'document',
+            'sec-fetch-mode': 'navigate',
+            'sec-fetch-site': 'same-origin',
+            'sec-fetch-user': '?1',
+            'upgrade-insecure-requests': '1',
+            'user-agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/137.0.0.0 Safari/537.36'
+            )
+        }
+
+        for attempt in range(retry):
+            try:
+                self._ensure_cookies()
+                response = self.session.get(url, headers=headers, timeout=15)
+                if response.status_code == 200:
+                    return response.text
+            except Exception as e:
+                print(f"Attempt {attempt+1} failed: {e}")
+                time.sleep(2 ** attempt)
+
+        else:
+            raise Exception(f"Failed to fetch product page HTML: {response.status_code}")
+

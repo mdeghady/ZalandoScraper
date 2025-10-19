@@ -5,6 +5,7 @@ from app.models.schemas import (
     ScrapeResponse, ModernSizeInfo
 )
 from app.utils.url_parser import ZalandoURLParser
+from app.utils.html_parser import extract_merchant_data , extract_stock_data
 from app.services.api_scraper import ZalandoAPIScraper
 from app.services.crawl_scraper import Crawl4AIScraper
 from app.services.crawl_scraper import ZalandoCrawl4AIScraper
@@ -46,9 +47,12 @@ class ZalandoScraperService:
                 self._fetch_api_data, product_code
             )
             crawl_task = self.crawl_scraper.scrape_product_page(url)
+            fetch_html_task = asyncio.to_thread(
+                self.fetch_html_page_data, url
+            )
 
-            api_result, crawl_result = await asyncio.gather(
-                api_task, crawl_task, return_exceptions=True
+            api_result, crawl_result , html_result= await asyncio.gather(
+                api_task, crawl_task, fetch_html_task, return_exceptions=True
             )
 
             # Handle exceptions
@@ -64,12 +68,19 @@ class ZalandoScraperService:
                     error=f"Crawler error: {str(crawl_result)}"
                 )
 
+            if isinstance(html_result, Exception):
+                return ScrapeResponse(
+                    success=False,
+                    error=f"Crawler error: {str(html_result)}"
+                )
+
             product_data, sku_data = api_result
             crawl_data = crawl_result
+            html_data = html_result
 
             # Merge and normalize data
             merged_response = self._merge_responses(
-                product_data, sku_data, crawl_data, url
+                product_data, sku_data, crawl_data, html_data, url
             )
 
             return ScrapeResponse(
@@ -175,6 +186,18 @@ class ZalandoScraperService:
 
         return parsed_product, parsed_sku
 
+    def fetch_html_page_data(self, url: str) -> Optional[Dict]:
+        """Fetch raw HTML and extract merchant & shipping data."""
+        try:
+            html_content = self.api_scraper.fetch_product_page_html(url)
+            product_code = self.url_parser.extract_product_code(url)
+            merchant_data = extract_merchant_data(html_content, product_code)
+            stock_data = extract_stock_data(html_content , product_code)
+            return merchant_data , stock_data
+        except Exception:
+            return Exception("Failed to fetch or parse HTML page.")
+
+
     # def _merge_responses(self, product_data: Optional[ProductData],
     #                      sku_data: Optional[SkuData],
     #                      crawl_data: Optional[Dict],
@@ -221,6 +244,7 @@ class ZalandoScraperService:
     def _merge_responses(self, product_data: Optional[ProductData],
                         sku_data: Optional[SkuData],
                         crawl_data: Optional[Dict],
+                        html_data: tuple[Optional[Dict] , Optional[Dict]],
                         url: str) -> APIProductResponse:
         """
         Merge and normalize data from all sources.
@@ -240,11 +264,27 @@ class ZalandoScraperService:
                     # Merge the gtin and merchant id from simple if available
                     size_info.update({
                         'gtin': simple.get('gtins', [None])[0],
-                        'merchant_id': simple.get('offer' , {}).get('merchant', {}).get('id')
+                        'merchant_id': simple.get('offer' , {}).get('merchant', {}).get('id'),
+                        'sku' : sku
                     })
 
         # Replace the simples list with the enriched size info
-        product_data.simples = list(sku_to_sizeinfo.values())
+        if len (sku_to_sizeinfo) > 0:
+            product_data.simples = list(sku_to_sizeinfo.values())
+        else:
+            available_qnty = html_data[1]
+            # One size products
+            product_data.simples = [{
+                'size_label': "One Size",
+                'notes': "",
+                "available_Qnty" : available_qnty.get('stock' , ""),
+                'availability': "InStock",
+                'long_distance': "false",
+                'price' : product_data.display_price.get('trackingCurrentAmount', ""),
+                'gtin': product_data.gtin,
+                'merchant_id': None,
+                'sku': available_qnty.get('sku', ""),
+            }]
 
         # A dd product highlight if available to product data
         if product_data and crawl_data and 'ProductHighlight' in crawl_data:
@@ -258,6 +298,7 @@ class ZalandoScraperService:
 
             for sku, size_info in modern_sizes_raw.items():
                 modern_sizes_dict[sku] = ModernSizeInfo(
+                    sku=sku,
                     size_label=size_info.get('size_label', ''),
                     notes=size_info.get('notes', ''),
                     availability=size_info.get('availability', 'InStock'),
@@ -276,14 +317,28 @@ class ZalandoScraperService:
                 url=url
             )
 
+            html_merchant_data = html_data[0]
+        # Add merchant data from HTML parsing to the simples data
+            for simple in product_data.simples:
+                sku = simple.get('sku')
+                if sku and html_merchant_data:
+                    merchant_data = html_merchant_data[sku]
+                    simple['merchant'] = merchant_data.get('merchant')
+                    simple['shipper'] = merchant_data.get('shipper')
+        data_sources = []
+        if product_data:
+            data_sources.append("api")
+        if crawl_data:
+            data_sources.append("crawl")
+        if html_data:
+            data_sources.append("html")
+
         return APIProductResponse(
             product_data=product_data,
             sku_data=sku_data,
             crawl_data=parsed_crawl,
             metadata={
                 "merged_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.localtime()),
-                "data_sources": ["api", "crawl"] if product_data and crawl_data else
-                ["api"] if product_data else
-                ["crawl"] if crawl_data else []
+                "data_sources": data_sources
             }
         )
