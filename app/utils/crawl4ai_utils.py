@@ -526,4 +526,3 @@ class ZalandoCrawl4AIScraper:
             }
             skus_out.append(item)
         return skus_out
-
