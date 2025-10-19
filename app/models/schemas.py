@@ -19,6 +19,7 @@ class SizeInfo(BaseModel):
 # NEW: Model for the modern size format
 class ModernSizeInfo(BaseModel):
     """Model for modern size format with SKU as key"""
+    sku: str
     size_label: str
     notes: str
     availability: str  # "InStock" or "OutOfStock"
